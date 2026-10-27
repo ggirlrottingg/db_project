@@ -1,0 +1,252 @@
+-- Disable substitution variable prompt in Oracle SQL Developer
+SET DEFINE OFF;
+
+-- =============================================================================
+-- DROP EXISTING TABLES (Clean Reset)
+-- =============================================================================
+DROP TABLE IF EXISTS RETURNREQUEST;
+DROP TABLE IF EXISTS REVIEW;
+DROP TABLE IF EXISTS PAYMENT;
+DROP TABLE IF EXISTS TRACKINGEVENT;
+DROP TABLE IF EXISTS ORDERITEM;
+DROP TABLE IF EXISTS ORDER_TABLE;
+DROP TABLE IF EXISTS SHIPMENT;
+DROP TABLE IF EXISTS COURIER;
+DROP TABLE IF EXISTS PRODUCT;
+DROP TABLE IF EXISTS CATEGORY;
+DROP TABLE IF EXISTS SUPPORTAGENT;
+DROP TABLE IF EXISTS SELLER;
+DROP TABLE IF EXISTS BUYER;
+DROP TABLE IF EXISTS PERSON;
+
+-- =============================================================================
+-- DDL: TABLE CREATION
+-- =============================================================================
+
+-- 1. PERSON (Superclass)
+CREATE TABLE PERSON (
+    PersonID INT PRIMARY KEY,
+    Email VARCHAR(255) UNIQUE NOT NULL,
+    PasswordHash VARCHAR(255) NOT NULL,
+    FirstName VARCHAR(100) NOT NULL,
+    LastName VARCHAR(100) NOT NULL,
+    AddressLine1 VARCHAR(255),
+    City VARCHAR(100),
+    State VARCHAR(50),
+    PostalCode VARCHAR(20),
+    CreatedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 2. BUYER (Subclass of Person - Disjoint EER)
+CREATE TABLE BUYER (
+    BuyerID INT PRIMARY KEY,
+    MembershipStatus VARCHAR(50),
+    CONSTRAINT fk_buyer_person FOREIGN KEY (BuyerID) REFERENCES PERSON(PersonID) ON DELETE CASCADE
+);
+
+-- 3. SELLER (Subclass of Person - Disjoint EER)
+CREATE TABLE SELLER (
+    SellerID INT PRIMARY KEY,
+    StoreName VARCHAR(100) NOT NULL,
+    Rating DECIMAL(3,2),
+    CONSTRAINT fk_seller_person FOREIGN KEY (SellerID) REFERENCES PERSON(PersonID) ON DELETE CASCADE
+);
+
+-- 4. SUPPORTAGENT (Subclass of Person - Disjoint EER)
+CREATE TABLE SUPPORTAGENT (
+    AgentID INT PRIMARY KEY,
+    HireDate DATE,
+    Role VARCHAR(100),
+    CONSTRAINT fk_supportagent_person FOREIGN KEY (AgentID) REFERENCES PERSON(PersonID) ON DELETE CASCADE
+);
+
+-- 5. CATEGORY
+CREATE TABLE CATEGORY (
+    CategoryID INT PRIMARY KEY,
+    Name VARCHAR(100) NOT NULL
+);
+
+-- 6. PRODUCT
+CREATE TABLE PRODUCT (
+    ProductID INT PRIMARY KEY,
+    SellerID INT NOT NULL,
+    CategoryID INT NOT NULL,
+    Name VARCHAR(255) NOT NULL,
+    Description TEXT,
+    BasePrice DECIMAL(10,2) NOT NULL,
+    CONSTRAINT fk_product_seller FOREIGN KEY (SellerID) REFERENCES SELLER(SellerID),
+    CONSTRAINT fk_product_category FOREIGN KEY (CategoryID) REFERENCES CATEGORY(CategoryID)
+);
+
+-- 7. COURIER
+CREATE TABLE COURIER (
+    CourierID INT PRIMARY KEY,
+    Name VARCHAR(100) NOT NULL,
+    ContactPhone VARCHAR(50)
+);
+
+-- 8. SHIPMENT
+CREATE TABLE SHIPMENT (
+    ShipmentID INT PRIMARY KEY,
+    CourierID INT NOT NULL,
+    TrackingNumber VARCHAR(100) UNIQUE NOT NULL,
+    ShippedDate TIMESTAMP,
+    ExpectedDeliveryDate TIMESTAMP,
+    CONSTRAINT fk_shipment_courier FOREIGN KEY (CourierID) REFERENCES COURIER(CourierID)
+);
+
+-- 9. ORDER_TABLE (Named ORDER_TABLE to avoid reserved keyword conflicts)
+CREATE TABLE ORDER_TABLE (
+    OrderID INT PRIMARY KEY,
+    BuyerID INT NOT NULL,
+    ShipmentID INT,
+    OrderDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    DeliveryStatus VARCHAR(50) NOT NULL,
+    TotalAmount DECIMAL(10,2) NOT NULL,
+    CONSTRAINT fk_order_buyer FOREIGN KEY (BuyerID) REFERENCES BUYER(BuyerID),
+    CONSTRAINT fk_order_shipment FOREIGN KEY (ShipmentID) REFERENCES SHIPMENT(ShipmentID)
+);
+
+-- 10. ORDERITEM
+CREATE TABLE ORDERITEM (
+    OrderItemID INT,
+    OrderID INT,
+    ProductID INT NOT NULL,
+    Quantity INT NOT NULL,
+    PriceAtPurchase DECIMAL(10,2) NOT NULL,
+    PRIMARY KEY (OrderItemID, OrderID),
+    CONSTRAINT fk_orderitem_order FOREIGN KEY (OrderID) REFERENCES ORDER_TABLE(OrderID) ON DELETE CASCADE,
+    CONSTRAINT fk_orderitem_product FOREIGN KEY (ProductID) REFERENCES PRODUCT(ProductID)
+);
+
+-- 11. TRACKINGEVENT
+CREATE TABLE TRACKINGEVENT (
+    TrackingEventID INT PRIMARY KEY,
+    ShipmentID INT NOT NULL,
+    Timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    Location VARCHAR(255),
+    StatusDescription VARCHAR(255),
+    CONSTRAINT fk_tracking_shipment FOREIGN KEY (ShipmentID) REFERENCES SHIPMENT(ShipmentID) ON DELETE CASCADE
+);
+
+-- 12. PAYMENT
+CREATE TABLE PAYMENT (
+    PaymentID INT PRIMARY KEY,
+    OrderID INT NOT NULL,
+    PaymentDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    Amount DECIMAL(10,2) NOT NULL,
+    PaymentMethod VARCHAR(50) NOT NULL,
+    CONSTRAINT fk_payment_order FOREIGN KEY (OrderID) REFERENCES ORDER_TABLE(OrderID) ON DELETE CASCADE
+);
+
+-- 13. REVIEW
+CREATE TABLE REVIEW (
+    ReviewID INT PRIMARY KEY,
+    OrderID INT NOT NULL,
+    Rating INT CHECK (Rating BETWEEN 1 AND 5),
+    Comment TEXT,
+    ReviewDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_review_order FOREIGN KEY (OrderID) REFERENCES ORDER_TABLE(OrderID) ON DELETE CASCADE
+);
+
+-- 14. RETURNREQUEST
+CREATE TABLE RETURNREQUEST (
+    ReturnID INT PRIMARY KEY,
+    OrderID INT NOT NULL,
+    Reason TEXT NOT NULL,
+    Status VARCHAR(50) NOT NULL,
+    RequestedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_return_order FOREIGN KEY (OrderID) REFERENCES ORDER_TABLE(OrderID) ON DELETE CASCADE
+);
+
+
+-- =============================================================================
+-- DML: DUMMY DATA INSERTION
+-- =============================================================================
+
+-- 1. PERSON
+INSERT INTO PERSON (PersonID, Email, PasswordHash, FirstName, LastName, AddressLine1, City, State, PostalCode, CreatedDate) VALUES
+(1, 'alice.johnson@example.com', 'hash_pass_123', 'Alice', 'Johnson', '123 Main St', 'New York', 'NY', '10001', '2025-01-10 09:00:00'),
+(2, 'bob.smith@example.com',     'hash_pass_456', 'Bob',   'Smith',   '456 Oak Ave',  'Los Angeles', 'CA', '90001', '2025-01-12 10:30:00'),
+(3, 'charlie.brown@example.com', 'hash_pass_789', 'Charlie', 'Brown', '789 Pine Rd', 'Chicago', 'IL', '60601', '2025-01-15 14:15:00'),
+(4, 'techzone@seller.com',       'hash_pass_abc', 'David', 'Miller', '101 Tech Way', 'Austin', 'TX', '73301', '2025-01-01 08:00:00'),
+(5, 'fashionhub@seller.com',     'hash_pass_def', 'Emma',  'Davis',  '202 Style Blvd', 'Miami', 'FL', '33101', '2025-01-05 11:20:00'),
+(6, 'support.agent1@marketplace.com', 'hash_pass_agent1', 'Frank', 'Wilson', '303 Corp Rd', 'Seattle', 'WA', '98101', '2024-11-01 08:00:00');
+
+-- 2. BUYER
+INSERT INTO BUYER (BuyerID, MembershipStatus) VALUES
+(1, 'Gold'),
+(2, 'Standard'),
+(3, 'Platinum');
+
+-- 3. SELLER
+INSERT INTO SELLER (SellerID, StoreName, Rating) VALUES
+(4, 'TechZone Direct', 4.8),
+(5, 'FashionHub Express', 4.5);
+
+-- 4. SUPPORTAGENT
+INSERT INTO SUPPORTAGENT (AgentID, HireDate, Role) VALUES
+(6, '2024-11-01', 'Senior Disputes Resolver');
+
+-- 5. CATEGORY
+INSERT INTO CATEGORY (CategoryID, Name) VALUES
+(1, 'Electronics'),
+(2, 'Apparel & Fashion'),
+(3, 'Home & Kitchen');
+
+-- 6. PRODUCT
+INSERT INTO PRODUCT (ProductID, SellerID, CategoryID, Name, Description, BasePrice) VALUES
+(101, 4, 1, 'Wireless Noise-Canceling Headphones', 'High quality over-ear bluetooth headphones', 199.99),
+(102, 4, 1, 'Mechanical Gaming Keyboard', 'RGB backlit mechanical keyboard with blue switches', 89.99),
+(103, 5, 2, 'Men Cotton Denim Jacket', 'Classic blue denim jacket, 100% premium cotton', 69.50),
+(104, 5, 2, 'Women Casual Summer Dress', 'Breathable floral print summer dress', 45.00);
+
+-- 7. COURIER
+INSERT INTO COURIER (CourierID, Name, ContactPhone) VALUES
+(1, 'FedEx Express', '1-800-463-3339'),
+(2, 'UPS Ground', '1-800-742-5877');
+
+-- 8. SHIPMENT
+INSERT INTO SHIPMENT (ShipmentID, CourierID, TrackingNumber, ShippedDate, ExpectedDeliveryDate) VALUES
+(5001, 1, 'TRK-FEDEX-998811', '2025-02-01 14:00:00', '2025-02-04 18:00:00'),
+(5002, 2, 'TRK-UPS-774422',   '2025-02-03 10:30:00', '2025-02-06 17:00:00'),
+(5003, 1, 'TRK-FEDEX-332211', '2025-02-05 16:00:00', '2025-02-08 18:00:00');
+
+-- 9. ORDER_TABLE
+INSERT INTO ORDER_TABLE (OrderID, BuyerID, ShipmentID, OrderDate, DeliveryStatus, TotalAmount) VALUES
+(1001, 1, 5001, '2025-02-01 10:15:00', 'Delivered', 289.98),
+(1002, 2, 5002, '2025-02-02 16:45:00', 'In Transit', 69.50),
+(1003, 3, 5003, '2025-02-04 11:20:00', 'Delivered', 199.99),
+(1004, 1, NULL, '2025-02-10 09:30:00', 'Pending', 45.00);
+
+-- 10. ORDERITEM
+INSERT INTO ORDERITEM (OrderItemID, OrderID, ProductID, Quantity, PriceAtPurchase) VALUES
+(1, 1001, 101, 1, 199.99),
+(2, 1001, 102, 1, 89.99),
+(3, 1002, 103, 1, 69.50),
+(4, 1003, 101, 1, 199.99),
+(5, 1004, 104, 1, 45.00);
+
+-- 11. TRACKINGEVENT
+INSERT INTO TRACKINGEVENT (TrackingEventID, ShipmentID, Timestamp, Location, StatusDescription) VALUES
+(1, 5001, '2025-02-01 14:30:00', 'New York, NY', 'Package picked up by carrier'),
+(2, 5001, '2025-02-02 08:15:00', 'Philadelphia, PA', 'In transit through hub'),
+(3, 5001, '2025-02-04 13:20:00', 'New York, NY', 'Delivered to recipient address'),
+(4, 5002, '2025-02-03 11:00:00', 'Miami, FL', 'Package picked up by carrier'),
+(5, 5002, '2025-02-04 19:45:00', 'Atlanta, GA', 'Arrived at sorting facility');
+
+-- 12. PAYMENT
+INSERT INTO PAYMENT (PaymentID, OrderID, PaymentDate, Amount, PaymentMethod) VALUES
+(9001, 1001, '2025-02-01 10:16:00', 289.98, 'Credit Card'),
+(9002, 1002, '2025-02-02 16:46:00', 69.50,  'PayPal'),
+(9003, 1003, '2025-02-04 11:21:00', 199.99, 'Credit Card'),
+(9004, 1004, '2025-02-10 09:31:00', 45.00,  'Debit Card');
+
+-- 13. REVIEW
+INSERT INTO REVIEW (ReviewID, OrderID, Rating, Comment, ReviewDate) VALUES
+(301, 1001, 5, 'Awesome headphones! Great sound clarity and fast shipping.', '2025-02-05 10:00:00'),
+(302, 1003, 4, 'Very comfortable, but battery life could be slightly longer.', '2025-02-09 15:30:00');
+
+-- 14. RETURNREQUEST
+INSERT INTO RETURNREQUEST (ReturnID, OrderID, Reason, Status, RequestedDate) VALUES
+(701, 1002, 'Wrong size delivered', 'Approved', '2025-02-07 14:00:00');
